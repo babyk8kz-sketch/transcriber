@@ -36,6 +36,15 @@ h1{font-size:20px;margin:4px 0 2px}
 .live{color:var(--muted);font-style:italic}
 .empty{color:var(--muted)}
 .note{color:var(--muted);font-size:12px;margin-top:8px}
+
+.rec-card{display:flex;flex-direction:column;gap:10px}
+.rec-top{display:flex;align-items:center;gap:10px}
+.rbtn{border:2px solid #c43030;color:#c43030;background:none;border-radius:12px;padding:12px 16px;font:inherit;font-weight:600;cursor:pointer}
+.rbtn.on{background:#c43030;color:#fff}
+.timer{color:var(--muted);font-variant-numeric:tabular-nums}
+audio{width:100%}
+.dl{display:flex;gap:8px}
+.dl button,.dl a{flex:1;text-align:center;text-decoration:none;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:12px;font:inherit;font-weight:600;cursor:pointer}
 </style>
 </head>
 <body>
@@ -51,6 +60,13 @@ h1{font-size:20px;margin:4px 0 2px}
   <button class="btn" id="toggle">Start listening</button>
   <button class="btn sec" id="copy">Copy</button>
   <button class="btn sec" id="clear">Clear</button>
+</div>
+
+<div class="card rec-card">
+  <div class="label" style="margin:0">Audio recording (optional)</div>
+  <div class="rec-top"><button class="rbtn" id="recBtn">Record audio</button><span class="timer" id="timer"></span></div>
+  <div id="recOut"></div>
+  <div class="note" id="recNote" style="margin:0">Records your voice as a file you can save, for speaker-detection tools later. Works separately from the transcript.</div>
 </div>
 
 <div class="card" id="log"><span class="empty">Transcript will appear here.</span></div>
@@ -147,6 +163,53 @@ $('copy').onclick=async()=>{
   catch(e){b.textContent='Copy failed'}
   setTimeout(()=>b.textContent='Copy',1500);
 };
+
+let mr=null,chunks=[],recStream=null,tInt=null,t0=0,recUrl=null,recType='';
+function fmt(n){const m=Math.floor(n/60),s=n%60;return m+':'+String(s).padStart(2,'0')}
+async function startRec(){
+  const note=$('recNote');
+  if(!navigator.mediaDevices||!window.MediaRecorder){note.textContent='Audio recording isn\'t supported in this browser.';return}
+  try{ recStream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){note.textContent='Couldn\'t access the microphone for recording: '+(e.name||'error');return}
+  const types=['audio/mp4','audio/webm;codecs=opus','audio/webm'];
+  recType=types.find(t=>MediaRecorder.isTypeSupported(t))||'';
+  try{ mr=recType?new MediaRecorder(recStream,{mimeType:recType}):new MediaRecorder(recStream); }
+  catch(e){note.textContent='Recording failed to start.';recStream.getTracks().forEach(t=>t.stop());return}
+  chunks=[];
+  mr.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  mr.onstop=finishRec;
+  mr.start(1000);
+  t0=Date.now(); $('timer').textContent='0:00';
+  tInt=setInterval(()=>{$('timer').textContent=fmt(Math.floor((Date.now()-t0)/1000))},500);
+  $('recBtn').textContent='Stop recording'; $('recBtn').classList.add('on');
+  $('recOut').innerHTML='';
+  note.textContent='Recording… (if the transcript stops while recording, your phone can\'t do both at once)';
+}
+function stopRec(){
+  clearInterval(tInt);
+  try{mr&&mr.state!=='inactive'&&mr.stop()}catch(e){}
+  recStream&&recStream.getTracks().forEach(t=>t.stop());
+  $('recBtn').textContent='Record audio'; $('recBtn').classList.remove('on');
+}
+function finishRec(){
+  const type=(mr&&mr.mimeType)||recType||'audio/mp4';
+  const ext=type.includes('mp4')?'m4a':'webm';
+  const blob=new Blob(chunks,{type});
+  if(recUrl)URL.revokeObjectURL(recUrl);
+  recUrl=URL.createObjectURL(blob);
+  const name='recording-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.'+ext;
+  const out=$('recOut');
+  out.innerHTML='<audio controls src="'+recUrl+'"></audio><div class="dl"><button id="shareBtn">Save / Share</button><a href="'+recUrl+'" download="'+name+'">Download</a></div>';
+  $('shareBtn').onclick=async()=>{
+    try{
+      const f=new File([blob],name,{type});
+      if(navigator.canShare&&navigator.canShare({files:[f]})) await navigator.share({files:[f]});
+      else $('recNote').textContent='Sharing isn\'t available here. Use Download, or press and hold the player.';
+    }catch(e){}
+  };
+  $('recNote').textContent='Saved '+fmt(Math.round(blob.size?((Date.now()-t0)/1000):0))+'. Tap Save / Share, then choose Save to Files.';
+}
+$('recBtn').onclick=()=>{ (mr&&mr.state==='recording')?stopRec():startRec(); };
 
 renderSpeakers(); renderLog();
 </script>
