@@ -131,10 +131,10 @@ function start(){
     interim=tmp; renderLog();
   };
   rec.onerror=ev=>{
-    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){
-      $('note').textContent='Microphone access was blocked. Allow it in your browser settings and try again.';
-      stop();
-    }
+    const msgs={'not-allowed':'Speech recognition was refused (not-allowed). Mic works for recording, so check Settings > General > Keyboard > Enable Dictation, and Siri.','service-not-allowed':'Speech service not allowed (service-not-allowed). Check Enable Dictation and Siri in iPhone Settings.','audio-capture':'No microphone found or it is in use (audio-capture). Stop any recording and retry.','network':'Speech service needs internet (network).','language-not-supported':'Language not supported (language-not-supported).'};
+    if(ev.error==='no-speech'||ev.error==='aborted') return;
+    $('note').textContent='Error code: '+ev.error+'. '+(msgs[ev.error]||'');
+    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'||ev.error==='audio-capture'||ev.error==='language-not-supported'){ stop(); }
   };
   rec.onend=()=>{ if(listening){ try{rec.start()}catch(e){} } };
   listening=true;
